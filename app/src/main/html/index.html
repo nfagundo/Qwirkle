@@ -1,0 +1,351 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Qwirkle</title>
+    <style>
+        .setup-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .setup-container {
+            background-color: #f5f5f5;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .player-setup {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .player-setup select {
+            padding: 0.5rem;
+            font-size: 1rem;
+        }
+
+        .player-setup button {
+            padding: 0.5rem 1rem;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .player-setup button:hover {
+            background-color: #45a049;
+        }
+
+        .game-container {
+            display: none;
+        }
+
+        .game-container {
+            display: flex;
+            justify-content: space-between;
+            padding: 20px;
+        }
+
+        .board {
+            display: grid;
+            grid-template-columns: repeat(18, 40px);
+            gap: 2px;
+            background-color: #f0f0f0;
+            padding: 10px;
+        }
+
+        .cell {
+            width: 40px;
+            height: 40px;
+            border: 1px solid #ccc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        .player-hand {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .piece {
+            width: 40px;
+            height: 40px;
+            border: 1px solid #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: grab;
+        }
+
+        .selected {
+            border: 2px solid gold;
+        }
+
+        .controls {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="setup-screen" class="setup-screen">
+        <div class="setup-container">
+            <h2>Welcome to Qwirkle</h2>
+            <div class="player-setup">
+                <label for="player-count">Select number of players:</label>
+                <select id="player-count">
+                    <option value="2">2 Players</option>
+                    <option value="3">3 Players</option>
+                    <option value="4">4 Players</option>
+                </select>
+                <button id="start-game">Start Game</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="game-container">
+        <div class="game-area">
+            <div id="board" class="board"></div>
+            <div id="player-hand" class="player-hand"></div>
+            <div class="controls">
+                <button id="submit-move">Submit Move</button>
+                <button id="draw-tile">Draw Tile</button>
+                <button id="pass">Pass</button>
+            </div>
+        </div>
+        <div class="game-info">
+            <h2>Current Player: <span id="current-player">1</span></h2>
+            <h3>Score:</h3>
+            <div id="scores"></div>
+        </div>
+    </div>
+
+    <script>
+        class QwirkleUI {
+            constructor() {
+                this.selectedPiece = null;
+                this.currentMoves = [];
+                this.boardSize = 18;
+                this.setupEventListeners();
+            }
+
+            setupEventListeners() {
+                document.getElementById('start-game').addEventListener('click', () => {
+                    this.initializeGameWithPlayers();
+                });
+            }
+
+            async initializeGameWithPlayers() {
+                const playerCount = document.getElementById('player-count').value;
+                try {
+                    const response = await fetch('/api/initialize', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ playerCount: parseInt(playerCount) })
+                    });
+
+                    const data = await response.json();
+                    if (data.success) {
+                        // Hide setup screen and show game
+                        document.getElementById('setup-screen').style.display = 'none';
+                        document.querySelector('.game-container').style.display = 'flex';
+                        
+                        // Initialize the game board
+                        this.initializeBoard();
+                        this.initializeEventListeners();
+                        // try {
+                        //     const response = await fetch('/api/init');
+                        //     const gameState = await response.json();
+                        //     this.renderHand(gameState.hand);
+                        // } catch (error) {
+                        //     console.error('Error initializing hand:', error);
+                        // }                        
+                        this.renderHand(data.initialHand);
+                    } else {
+                        console.error('Failed to initialize game:', data.error);
+                    }
+                } catch (error) {
+                    console.error('Error initializing game:', error);
+                }
+            }
+
+            initializeBoard() {
+                const board = document.getElementById('board');
+                for (let i = 0; i < this.boardSize * this.boardSize; i++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.row = Math.floor(i / this.boardSize);
+                    cell.dataset.col = i % this.boardSize;
+                    board.appendChild(cell);
+                }
+            }
+
+            initializeEventListeners() {
+                // Handle piece selection from player's hand
+                document.getElementById('player-hand').addEventListener('click', (e) => {
+                    if (e.target.classList.contains('piece')) {
+                        if (this.selectedPiece) {
+                            this.selectedPiece.classList.remove('selected');
+                        }
+                        this.selectedPiece = e.target;
+                        this.selectedPiece.classList.add('selected');
+                    }
+                });
+
+                // Handle placing pieces on the board
+                document.getElementById('board').addEventListener('click', (e) => {
+                    if (e.target.classList.contains('cell') && this.selectedPiece) {
+                        const row = parseInt(e.target.dataset.row);
+                        const col = parseInt(e.target.dataset.col);
+                        this.placePiece(row, col);
+                    }
+                });
+
+                // Handle submit move button
+                document.getElementById('submit-move').addEventListener('click', () => {
+                    this.submitMove();
+                });
+            }
+
+            placePiece(row, col) {
+                if (this.selectedPiece) {
+                    const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+                    if (!cell.hasChildNodes()) {
+                        const piece = this.selectedPiece.cloneNode(true);
+                        cell.appendChild(piece);
+                        this.currentMoves.push({
+                            piece: this.selectedPiece.dataset.piece,
+                            row: row,
+                            col: col
+                        });
+                        this.selectedPiece.remove();
+                        this.selectedPiece = null;
+                    }
+                }
+            }
+
+            submitMove() {
+                if (this.currentMoves.length > 0) {
+                    // Here you would send the moves to your Java backend
+                    console.log('Submitting moves:', this.currentMoves);
+                    this.currentMoves = [];
+                    // Update turn
+                    const currentPlayer = document.getElementById('current-player');
+                    currentPlayer.textContent = (parseInt(currentPlayer.textContent) % 4) + 1;
+                }
+            }
+
+            // Method to render a player's hand
+            renderHand(pieces) {
+                const hand = document.getElementById('player-hand');
+                hand.innerHTML = '';
+                pieces.forEach(piece => {
+                    const pieceElement = document.createElement('div');
+                    pieceElement.className = 'piece';
+                    pieceElement.dataset.piece = `${piece.color}-${piece.shape}`;
+                    pieceElement.style.backgroundColor = piece.color;
+                    pieceElement.textContent = piece.shape;
+                    hand.appendChild(pieceElement);
+                });
+            }
+
+            async initializeGame() {
+                try {
+                    const response = await fetch('/api/init');
+                    const gameState = await response.json();
+                    this.renderHand(gameState.hand);
+                } catch (error) {
+                    console.error('Error initializing game:', error);
+                }
+            }
+
+            // Add this method to QwirkleUI class
+            async calculateScore(moves) {
+                try {
+                    const response = await fetch('/api/calculate-score', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(moves)
+                    });
+                    
+                    const result = await response.json();
+                    if (result.success) {
+                        this.updateScoreDisplay(result.currentPlayer, result.score);
+                        return result.score;
+                    }
+                    return 0;
+                } catch (error) {
+                    console.error('Error calculating score:', error);
+                    return 0;
+                }
+            }
+
+            // Add this method to update the score display
+            updateScoreDisplay(player, score) {
+                const scoresDiv = document.getElementById('scores');
+                let playerScoreElement = document.querySelector(`#player-${player}-score`);
+                
+                if (!playerScoreElement) {
+                    playerScoreElement = document.createElement('div');
+                    playerScoreElement.id = `player-${player}-score`;
+                    scoresDiv.appendChild(playerScoreElement);
+                }
+                
+                const currentScore = parseInt(playerScoreElement.dataset.score || 0);
+                const newScore = currentScore + score;
+                playerScoreElement.dataset.score = newScore;
+                playerScoreElement.textContent = `Player ${player}: ${newScore}`;
+            }
+
+            // Modify the submitMove method to include scoring
+            async submitMove() {
+                if (this.currentMoves.length > 0) {
+                    try {
+                        // First validate and submit the move
+                        const moveResponse = await fetch('/api/move', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(this.currentMoves)
+                        });
+                        
+                        const moveResult = await moveResponse.json();
+                        if (moveResult.success) {
+                            // Calculate and update score
+                            const score = await this.calculateScore(this.currentMoves);
+                            this.currentMoves = [];
+                            const currentPlayer = document.getElementById('current-player');
+                            currentPlayer.textContent = (parseInt(currentPlayer.textContent) % 4) + 1;
+                        }
+                    } catch (error) {
+                        console.error('Error submitting move:', error);
+                    }
+                }
+            }
+        }
+
+        
+        // Initialize the game
+        const game = new QwirkleUI();
+    </script>
+</body>
+</html>
