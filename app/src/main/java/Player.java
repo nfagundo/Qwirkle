@@ -27,4 +27,24 @@ public class Player {
     public int getScore() {
         return score;
     }
+
+    public void addPieces(List<Piece> Piece) {
+        for(int i = 0; i < Piece.size(); i++) {
+            hand.add(Piece.get(i));
+        }
+    }
+
+    public void removePieces(List<Piece> Piece) {
+        for(int i = 0; i < Piece.size(); i++) {
+            hand.remove(Piece.get(i));
+        }
+    }
+
+    public void addPiece(Piece Piece) {
+        hand.add(Piece);
+    }
+
+    public void removePiece(Piece Piece) {
+        hand.remove(Piece);
+    }
 }

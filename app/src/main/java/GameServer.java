@@ -71,10 +71,9 @@ public class GameServer {
                 // Parse the move data from the request
                 ObjectMapper mapper = new ObjectMapper();
                 JsonNode moveData = mapper.readTree(exchange.getRequestBody());
-                
+                Map<String, Object> result = new HashMap<>();
                 // Make the move using the shared gameBoard instance
-                Map<String, Object> result = gameBoard.makeMove(moveData);
-                
+                result = gameBoard.makeMove(moveData);
                 // Send response
                 String response = mapper.writeValueAsString(result);
                 exchange.getResponseHeaders().add("Content-Type", "application/json");
