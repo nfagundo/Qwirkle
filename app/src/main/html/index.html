@@ -240,22 +240,36 @@
                 }
             }
 
-            submitMove() {
-                if (this.currentMoves.length > 0) {
-                    // Here you would send the moves to your Java backend
-                    console.log('Submitting moves:', this.currentMoves);
-                    this.currentMoves = [];
-                    // Update turn
-                    const currentPlayer = document.getElementById('current-player');
-                    currentPlayer.textContent = (parseInt(currentPlayer.textContent) % 4) + 1;
-                }
-            }
+            // submitMove() {
+            //     if (this.currentMoves.length > 0) {
+            //         // Here you would send the moves to your Java backend
+            //         console.log('Submitting moves:', this.currentMoves);
+            //         this.currentMoves = [];
+            //         // Update turn
+            //         const currentPlayer = document.getElementById('current-player');
+            //         currentPlayer.textContent = (parseInt(currentPlayer.textContent) % 4) + 1;
+            //     }
+            // }
 
             // Method to render a player's hand
             renderHand(pieces) {
                 const hand = document.getElementById('player-hand');
                 hand.innerHTML = '';
                 pieces.forEach(piece => {
+                    switch(piece.shape) {
+                        case "C":
+                            piece.shape = '●';
+                        case "S":
+                            piece.shape = '■';
+                        case "D":
+                            piece.shape = '◆';
+                        case "8":
+                            piece.shape = '★';
+                        case "Q":
+                            piece.shape = '♣';
+                        case "4":
+                            piece.shape = '✚';
+                    }
                     const pieceElement = document.createElement('div');
                     pieceElement.className = 'piece';
                     pieceElement.dataset.piece = `${piece.color}-${piece.shape}`;
@@ -342,8 +356,6 @@
                 }
             }
         }
-
-        
         // Initialize the game
         const game = new QwirkleUI();
     </script>

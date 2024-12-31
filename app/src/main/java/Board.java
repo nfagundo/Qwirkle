@@ -1,6 +1,8 @@
+import com.fasterxml.jackson.annotation.JsonFormat.Shape;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import java.util.*;
+import java.util.stream.Collectors;
 public class Board {
     private int width;
     private int height;
@@ -31,6 +33,158 @@ public class Board {
             playerFour = new Player(bag.draw(6));  
         }
     }
+    /**
+ * Makes a move with multiple pieces
+ * @param moves List of moves, where each move contains x, y coordinates and a piece
+ * @return true if the move was successful, false otherwise
+ */
+public boolean makeMove(List<Map<String, Object>> moves) {
+    // Get current player
+    Player currentPlayer = switch (turn % 4) {
+        case 0 -> playerOne;
+        case 1 -> playerTwo;
+        case 2 -> playerThree != null ? playerThree : playerOne;
+        case 3 -> playerFour != null ? playerFour : playerTwo;
+        default -> throw new IllegalStateException("Invalid turn state");
+    };
+
+    // First validate all moves
+    for (Map<String, Object> move : moves) {
+        int x = (int) move.get("x");
+        int y = (int) move.get("y");
+        Piece piece = (Piece) move.get("piece");
+
+        // Check if the position is already occupied
+        if (findPieceAt(x, y) != null) {
+            return false;
+        }
+
+        // Validate the move according to game rules
+        if (!board.isEmpty() && !isValidMove(x, y, piece)) {
+            return false;
+        }
+
+        // Check if player has the piece in their hand
+        if (!currentPlayer.getHand().contains(piece)) {
+            return false;
+        }
+    }
+
+    // If all moves are valid, execute them
+    try {
+        for (Map<String, Object> move : moves) {
+            int x = (int) move.get("x");
+            int y = (int) move.get("y");
+            Piece piece = (Piece) move.get("piece");
+
+            // Place the piece on the board
+            board.put(x + ", " + y, piece);
+            piece.xCoord = x;
+            piece.yCoord = y;
+
+            // Remove the piece from player's hand
+            currentPlayer.getHand().remove(piece);
+        }
+
+        // Calculate score for the moves
+        int moveScore = calculateMoveScore(moves.stream()
+                                              .map(m -> (Piece)m.get("piece"))
+                                              .collect(Collectors.toList()));
+        
+        // Add score to current player
+        currentPlayer.addScore(moveScore);
+
+        // Draw new tiles
+        while (currentPlayer.getHand().size() < 6 && !bag.isEmpty()) {
+            currentPlayer.getHand().add(bag.remove(0));
+        }
+
+        // Increment turn
+        turn++;
+
+        return true;
+    } catch (Exception e) {
+        System.err.println("Error making moves: " + e.getMessage());
+        return false;
+    }
+}
+
+/**
+ * Validates if all moves are legal according to Qwirkle rules
+ */
+private boolean isValidMove(List<Map<String, Object>> moves) {
+    // If this is the first move on the board, only need to check if pieces are valid together
+    if (board.isEmpty()) {
+        return isValidFirstMoves(moves);
+    }
+
+    // Check if at least one piece connects to existing pieces
+    boolean hasConnection = false;
+    for (Map<String, Object> move : moves) {
+        int x = (int) move.get("x");
+        int y = (int) move.get("y");
+        List<Piece> adjacent = getAdjacentPieces(x, y);
+        if (!adjacent.isEmpty()) {
+            hasConnection = true;
+            break;
+        }
+    }
+
+    if (!hasConnection) {
+        return false;
+    }
+
+    // Validate each move individually
+    for (Map<String, Object> move : moves) {
+        int x = (int) move.get("x");
+        int y = (int) move.get("y");
+        Piece piece = (Piece) move.get("piece");
+
+        if (!isValidMove(x, y, piece)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
+ * Validates the first moves of the game
+ */
+private boolean isValidFirstMoves(List<Map<String, Object>> moves) {
+    // Check if pieces form a valid line
+    // For simplicity, we'll just check if they're all in the same row or column
+    boolean sameRow = moves.stream()
+            .map(m -> (int)m.get("y"))
+            .distinct()
+            .count() == 1;
+
+    boolean sameColumn = moves.stream()
+            .map(m -> (int)m.get("x"))
+            .distinct()
+            .count() == 1;
+
+    if (!sameRow && !sameColumn) {
+        return false;
+    }
+
+    // Check if pieces follow Qwirkle rules (same color or same shape)
+    List<Piece> pieces = moves.stream()
+            .map(m -> (Piece)m.get("piece"))
+            .collect(Collectors.toList());
+
+    boolean sameColor = pieces.stream()
+            .map(p -> p.name[0])
+            .distinct()
+            .count() == 1;
+
+    boolean sameShape = pieces.stream()
+            .map(p -> p.name[1])
+            .distinct()
+            .count() == 1;
+
+    return sameColor || sameShape;
+}
 
         /**
      * Makes a move in the Qwirkle game based on client input.
@@ -279,11 +433,11 @@ public class Board {
         return board.get(x + ", " + y);
     }
 
-    public List<Piece> getCurrentHand() {
+    public List<Map<String, String>> getCurrentHand() {
         return getHand(turn);
     }
 
-    public List<Piece> getHand(int playerIndex) {
+    public List<Map<String, String>> getHand(int playerIndex) {
         Player currentPlayer = switch (playerIndex) {
             case 0 -> playerOne;
             case 1 -> playerTwo;
@@ -291,9 +445,65 @@ public class Board {
             case 3 -> playerFour;
             default -> throw new IllegalStateException("Invalid player index");
         };
-        return currentPlayer.getHand();
+        List<Map<String, String>> formattedHand = new ArrayList<>();
+    
+        List<Piece> playerHand = currentPlayer.getHand();
+        
+        for (Piece tile : playerHand) {
+            Map<String, String> pieceData = new HashMap<>();
+            
+            // Convert the tile's color to a CSS-compatible color
+            String cssColor = tile.name[0].toLowerCase();
+            pieceData.put("color", cssColor);
+            
+            // Convert the tile's shape to a symbol
+            String symbol = convertShapeToSymbol(tile.name[1]);
+            pieceData.put("shape", symbol);
+            
+            formattedHand.add(pieceData);
+        }
+        
+        return formattedHand;
     }
 
+    private String convertShapeToSymbol(String shape) {
+        System.out.println("Input shape: '" + shape + "'");
+        System.out.println("Length: " + shape.length());
+        System.out.println("Bytes: " + Arrays.toString(shape.getBytes()));
+        if(shape.equals("Circle")) {
+            return "C";
+        } else if(shape.equals("Square")) {
+            return "S";
+        } else if(shape.equals("Diamond")) {
+            return "D";
+        } else if(shape.equals("8pt-Star")) {
+            return "8";
+        } else if(shape.equals("Clover")) {
+            return "Q";
+        } else if(shape.equals("4pt-Star")) {
+            return "4";
+        } else {
+            return "?";
+        }
+        // switch (shape) {  // trim() removes leading/trailing whitespace
+        //     case "Circle":
+        //         System.out.println("●");
+        //         return "●";
+        //     case "Square": 
+        //         System.out.println("■"); return "■";
+        //     case "Diamond":
+        //         System.out.println("◆");return "◆";
+        //     case "8pt-Star":
+        //         System.out.println("✦"); return "★";
+        //     case "Clover":
+        //         System.out.println("♣"); return "♣";
+        //     case "4pt-Star":
+        //         System.out.println("✚"); return "✚";
+        //     default:
+        //         System.out.println("?"); return "?";
+        // }
+    }
+    
     public int getTurn() {
         return turn;
     }

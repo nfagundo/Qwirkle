@@ -1,5 +1,3 @@
-
-
 import com.sun.net.httpserver.HttpServer;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpExchange;
@@ -164,7 +162,7 @@ public class GameServer {
                     }
     
                     // Get the current player's hand from the game board
-                    List<Piece> playerHand = gameBoard.getCurrentHand();
+                    List<Map<String,String>> playerHand = gameBoard.getCurrentHand();
                     
                     // Convert the hand to JSON
                     Map<String, Object> response = new HashMap<>();
@@ -221,7 +219,7 @@ public class GameServer {
                 // Create response with initial game state
                 Map<String, Object> response = new HashMap<>();
                 response.put("success", true);
-                response.put("initialHand", gameBoard.getHand(0)); // Get first player's hand
+                response.put("initialHand", gameBoard.getCurrentHand()); // Get first player's hand
                 response.put("currentPlayer", 1);
 
                 // Send success response

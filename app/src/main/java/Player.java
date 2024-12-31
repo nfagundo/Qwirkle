@@ -16,6 +16,10 @@ public class Player {
         hand.remove(piece);
     }
     
+    public void addScore(int score) {
+        this.score += score;
+    }
+
     public void setScore(int score) {
         this.score = score;
     }
