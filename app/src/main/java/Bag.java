@@ -1,4 +1,5 @@
 import java.util.*;
+import java.util.stream.Collectors;
 public class Bag {
     private Map<Piece, Integer> pieces;
     
@@ -46,28 +47,30 @@ public class Bag {
         if(numPieces <= 0 || numPieces > 6) {
             throw new IllegalArgumentException("Invalid Number of Pieces");
         }
-        List<Piece> temp = new ArrayList<>();
-        List<Piece> keys = new ArrayList<>();
-        for(Piece piece : pieces.keySet()) {
-            if(numPieces == 0) {
-                break;
-            }
-            int count = pieces.get(piece);
-            if(count > 0) {
-                temp.add(piece);
-                numPieces--;
-                pieces.replace(piece, count - 1);
-            } else {
-                keys.add(piece);
-            }
+        
+        List<Piece> available = pieces.entrySet().stream()
+            .filter(e -> e.getValue() > 0)
+            .flatMap(e -> Collections.nCopies(e.getValue(), e.getKey()).stream())
+            .collect(Collectors.toList());
+            
+        if(available.size() < numPieces) {
+            throw new IllegalStateException("Not enough pieces in bag");
         }
-        if(!keys.isEmpty()) {
-            for(int i = 0; i < keys.size(); i++) {
-                pieces.remove(keys.get(i));
-            }
+        
+        List<Piece> drawn = new ArrayList<>();
+        Random random = new Random();
+        
+        for(int i = 0; i < numPieces; i++) {
+            int index = random.nextInt(available.size());
+            Piece selectedPiece = available.remove(index);
+            drawn.add(selectedPiece);
+            pieces.merge(selectedPiece, -1, Integer::sum);
         }
-        return temp;
+        
+        pieces.entrySet().removeIf(entry -> entry.getValue() <= 0);
+        return drawn;
     }
+
 
     public boolean isEmpty() {
         return pieces.isEmpty();

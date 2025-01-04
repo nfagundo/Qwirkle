@@ -76,6 +76,20 @@
             cursor: pointer;
         }
 
+        .cell:hover {
+            background-color: #c7e3fd;
+        }
+
+        .cell .piece {
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .cell .piece:hover {
+            transform: scale(1.1);
+            opacity: 0.8;
+        }
+
         .player-hand {
             display: flex;
             gap: 10px;
@@ -123,7 +137,6 @@
             <div id="player-hand" class="player-hand"></div>
             <div class="controls">
                 <button id="submit-move">Submit Move</button>
-                <button id="draw-tile">Draw Tile</button>
                 <button id="pass">Pass</button>
             </div>
         </div>
@@ -140,6 +153,8 @@
                 this.selectedPiece = null;
                 this.currentMoves = [];
                 this.boardSize = 18;
+                this.placedPieces = new Map();
+                this.numPlayers = 0;
                 this.setupEventListeners();
             }
 
@@ -168,15 +183,9 @@
                         
                         // Initialize the game board
                         this.initializeBoard();
-                        this.initializeEventListeners();
-                        // try {
-                        //     const response = await fetch('/api/init');
-                        //     const gameState = await response.json();
-                        //     this.renderHand(gameState.hand);
-                        // } catch (error) {
-                        //     console.error('Error initializing hand:', error);
-                        // }                        
+                        this.initializeEventListeners();                       
                         this.renderHand(data.initialHand);
+                        this.numPlayers = data.playerCount;
                     } else {
                         console.error('Failed to initialize game:', data.error);
                     }
@@ -198,6 +207,7 @@
 
             initializeEventListeners() {
                 // Handle piece selection from player's hand
+                console.log("check");
                 document.getElementById('player-hand').addEventListener('click', (e) => {
                     if (e.target.classList.contains('piece')) {
                         if (this.selectedPiece) {
@@ -210,7 +220,9 @@
 
                 // Handle placing pieces on the board
                 document.getElementById('board').addEventListener('click', (e) => {
-                    if (e.target.classList.contains('cell') && this.selectedPiece) {
+                    if (e.target.classList.contains('piece') && e.target.parentElement.classList.contains('cell')) {
+                        this.handlePieceTakeBack(e.target);
+                    } else if (e.target.classList.contains('cell') && this.selectedPiece) {
                         const row = parseInt(e.target.dataset.row);
                         const col = parseInt(e.target.dataset.col);
                         this.placePiece(row, col);
@@ -221,6 +233,38 @@
                 document.getElementById('submit-move').addEventListener('click', () => {
                     this.submitMove();
                 });
+
+                document.getElementById('pass').addEventListener('click', () => {
+                    this.handlePass();
+                });
+            }
+
+            handlePieceTakeBack(pieceElement) {
+                // Find the piece in currentMoves
+                const row = parseInt(pieceElement.parentElement.dataset.row);
+                const col = parseInt(pieceElement.parentElement.dataset.col);
+                const moveIndex = this.currentMoves.findIndex(move => 
+                    move.row === row && move.col === col
+                );
+
+                if (moveIndex !== -1) {
+                    // Remove the move from currentMoves
+                    this.currentMoves.splice(moveIndex, 1);
+
+                    // Create new piece for hand
+                    const newPiece = document.createElement('div');
+                    newPiece.className = 'piece';
+                    newPiece.dataset.piece = pieceElement.dataset.piece;
+                    newPiece.style.backgroundColor = pieceElement.style.backgroundColor;
+                    newPiece.textContent = pieceElement.textContent;
+
+                    // Add piece back to hand
+                    const hand = document.getElementById('player-hand');
+                    hand.appendChild(newPiece);
+
+                    // Remove piece from board
+                    pieceElement.remove();
+                }
             }
 
             placePiece(row, col) {
@@ -239,81 +283,97 @@
                     }
                 }
             }
+            async handlePass() {
+                try {
+                    const response = await fetch('/api/pass', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
 
-            // submitMove() {
-            //     if (this.currentMoves.length > 0) {
-            //         // Here you would send the moves to your Java backend
-            //         console.log('Submitting moves:', this.currentMoves);
-            //         this.currentMoves = [];
-            //         // Update turn
-            //         const currentPlayer = document.getElementById('current-player');
-            //         currentPlayer.textContent = (parseInt(currentPlayer.textContent) % 4) + 1;
-            //     }
-            // }
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        // Update current player
+                        const currentPlayerElement = document.getElementById('current-player');
+                        const currentPlayer = parseInt(currentPlayerElement.textContent);
+                        const nextPlayer = (currentPlayer % this.numPlayers) + 1;
+                        currentPlayerElement.textContent = nextPlayer;
 
+                        // Clear any selected pieces
+                        if (this.selectedPiece) {
+                            this.selectedPiece.classList.remove('selected');
+                            this.selectedPiece = null;
+                        }
+
+                        // Clear current moves
+                        this.currentMoves = [];
+
+                        // Render new hand if provided in response
+                        if (result.newHand) {
+                            this.renderHand(result.newHand);
+                        }
+
+                        // Optional: Display pass message
+                        console.log(`Player ${currentPlayer} passed their turn`);
+                    } else {
+                        console.error('Failed to pass turn:', result.error);
+                    }
+                } catch (error) {
+                    console.error('Error passing turn:', error);
+                }
+            }
+
+            // Add this helper method to update the game state
+            updateGameState(gameState) {
+                if (gameState.currentPlayer) {
+                    document.getElementById('current-player').textContent = gameState.currentPlayer;
+                }
+                
+                if (gameState.scores) {
+                    const scoresDiv = document.getElementById('scores');
+                    scoresDiv.innerHTML = '';
+                    Object.entries(gameState.scores).forEach(([player, score]) => {
+                        const playerScore = document.createElement('div');
+                        playerScore.textContent = `Player ${player}: ${score}`;
+                        scoresDiv.appendChild(playerScore);
+                    });
+                }
+            }
             // Method to render a player's hand
             renderHand(pieces) {
+                console.log("Pieces: ", pieces);
                 const hand = document.getElementById('player-hand');
                 hand.innerHTML = '';
                 pieces.forEach(piece => {
-                    switch(piece.shape) {
-                        case "C":
-                            piece.shape = '●';
-                        case "S":
-                            piece.shape = '■';
-                        case "D":
-                            piece.shape = '◆';
-                        case "8":
-                            piece.shape = '★';
-                        case "Q":
-                            piece.shape = '♣';
-                        case "4":
-                            piece.shape = '✚';
-                    }
+                    // switch(piece.shape) {
+                    //     case "C":
+                    //         piece.shape = 'Circle';
+                    //     case "S":
+                    //         piece.shape = 'Square';
+                    //     case "D":
+                    //         piece.shape = 'Diamond';
+                    //     case "8":
+                    //         piece.shape = '8pt-Star';
+                    //     case "Q":
+                    //         piece.shape = 'Clover';
+                    //     case "4":
+                    //         piece.shape = '4pt-Star';
+                    // }
                     const pieceElement = document.createElement('div');
                     pieceElement.className = 'piece';
-                    pieceElement.dataset.piece = `${piece.color}-${piece.shape}`;
+                    pieceElement.dataset.piece = `${piece.color} ${piece.shape}`;
                     pieceElement.style.backgroundColor = piece.color;
                     pieceElement.textContent = piece.shape;
                     hand.appendChild(pieceElement);
                 });
             }
 
-            async initializeGame() {
-                try {
-                    const response = await fetch('/api/init');
-                    const gameState = await response.json();
-                    this.renderHand(gameState.hand);
-                } catch (error) {
-                    console.error('Error initializing game:', error);
-                }
-            }
-
-            // Add this method to QwirkleUI class
-            async calculateScore(moves) {
-                try {
-                    const response = await fetch('/api/calculate-score', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(moves)
-                    });
-                    
-                    const result = await response.json();
-                    if (result.success) {
-                        this.updateScoreDisplay(result.currentPlayer, result.score);
-                        return result.score;
-                    }
-                    return 0;
-                } catch (error) {
-                    console.error('Error calculating score:', error);
-                    return 0;
-                }
-            }
 
             // Add this method to update the score display
             updateScoreDisplay(player, score) {
+                console.log('Score calculation result: ', score, ' Current Player: ', player);
                 const scoresDiv = document.getElementById('scores');
                 let playerScoreElement = document.querySelector(`#player-${player}-score`);
                 
@@ -324,16 +384,18 @@
                 }
                 
                 const currentScore = parseInt(playerScoreElement.dataset.score || 0);
-                const newScore = currentScore + score;
+                const newScore = score;
                 playerScoreElement.dataset.score = newScore;
                 playerScoreElement.textContent = `Player ${player}: ${newScore}`;
             }
 
             // Modify the submitMove method to include scoring
             async submitMove() {
+                console.log("Input Super Recieved: " + this.currentMoves);
                 if (this.currentMoves.length > 0) {
                     try {
                         // First validate and submit the move
+                        console.log("Input Recieved");
                         const moveResponse = await fetch('/api/move', {
                             method: 'POST',
                             headers: {
@@ -341,14 +403,18 @@
                             },
                             body: JSON.stringify(this.currentMoves)
                         });
-                        
+                        console.log("Submitting moves: " + this.currentMoves);
                         const moveResult = await moveResponse.json();
+                        console.log(moveResult);
                         if (moveResult.success) {
-                            // Calculate and update score
-                            const score = await this.calculateScore(this.currentMoves);
                             this.currentMoves = [];
+                            this.placedPieces.clear();
+                            console.log("Success!!");
+                            // Calculate and update score
+                            const score = await this.updateScoreDisplay((moveResult.gameState.turn % this.numPlayers) + 1, moveResult.gameState.score);
                             const currentPlayer = document.getElementById('current-player');
-                            currentPlayer.textContent = (parseInt(currentPlayer.textContent) % 4) + 1;
+                            currentPlayer.textContent = (parseInt(currentPlayer.textContent) % this.numPlayers) + 1;
+                            this.renderHand(moveResult.gameState.nextHand);
                         }
                     } catch (error) {
                         console.error('Error submitting move:', error);

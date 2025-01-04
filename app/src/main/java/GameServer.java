@@ -26,7 +26,7 @@ public class GameServer {
             server.createContext("/api/initialize", new InitializeHandler());
             server.createContext("/api/move", new MoveHandler());
             server.createContext("/api/calculate-score", new QwirkleController());
-            server.createContext("/api/init", new InitHandler());
+            server.createContext("/api/pass", new PassHandler());
             server.setExecutor(null);
             server.start();
             System.out.println("Server started at http://localhost:8080");
@@ -56,43 +56,49 @@ public class GameServer {
     
         @Override
         public void handle(HttpExchange exchange) throws IOException {
-            // Check if game is initialized
-            if (gameBoard == null) {
-                String errorResponse = "{\"error\": \"Game not initialized\"}";
-                exchange.getResponseHeaders().add("Content-Type", "application/json");
-                exchange.sendResponseHeaders(400, errorResponse.length());
-                try (OutputStream os = exchange.getResponseBody()) {
-                    os.write(errorResponse.getBytes(StandardCharsets.UTF_8));
-                }
-                return;
-            }
-
             try {
+                // Check if game is initialized
+                if (gameBoard == null) {
+                    String errorResponse = "{\"error\": \"Game not initialized\"}";
+                    byte[] errorBytes = errorResponse.getBytes(StandardCharsets.UTF_8);
+                    exchange.getResponseHeaders().add("Content-Type", "application/json");
+                    exchange.sendResponseHeaders(400, errorBytes.length);
+                    try (OutputStream os = exchange.getResponseBody()) {
+                        os.write(errorBytes);
+                    }
+                    return;
+                }
+        
                 // Parse the move data from the request
                 ObjectMapper mapper = new ObjectMapper();
                 JsonNode moveData = mapper.readTree(exchange.getRequestBody());
-                Map<String, Object> result = new HashMap<>();
-                // Make the move using the shared gameBoard instance
-                result = gameBoard.makeMove(moveData);
-                // Send response
+                Map<String, Object> result = gameBoard.makeMove(moveData);
+                
+                // Convert response to JSON and get bytes
                 String response = mapper.writeValueAsString(result);
+                byte[] responseBytes = response.getBytes(StandardCharsets.UTF_8);
+                
+                // Send response with correct content length
                 exchange.getResponseHeaders().add("Content-Type", "application/json");
-                exchange.sendResponseHeaders(200, response.length());
+                exchange.sendResponseHeaders(200, responseBytes.length);
                 try (OutputStream os = exchange.getResponseBody()) {
-                    os.write(response.getBytes(StandardCharsets.UTF_8));
+                    os.write(responseBytes);
                 }
+                
             } catch (Exception e) {
                 // Handle errors
                 String errorResponse = "{\"success\": false, \"error\": \"" + e.getMessage() + "\"}";
-                exchange.sendResponseHeaders(500, errorResponse.length());
+                byte[] errorBytes = errorResponse.getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().add("Content-Type", "application/json");
+                exchange.sendResponseHeaders(500, errorBytes.length);
                 try (OutputStream os = exchange.getResponseBody()) {
-                    os.write(errorResponse.getBytes(StandardCharsets.UTF_8));
+                    os.write(errorBytes);
                 }
             }
         }
     }
     static class QwirkleController implements HttpHandler {
-        private final ObjectMapper objectMapper = new ObjectMapper(); // For JSON processing
+        private final ObjectMapper objectMapper = new ObjectMapper();
         
         @Override
         public void handle(HttpExchange exchange) throws IOException {
@@ -102,12 +108,23 @@ public class GameServer {
             }
     
             try {
+                // Add debug logging
+                System.out.println("Calculating score for moves...");
+                
                 // Read the request body
                 InputStream requestBody = exchange.getRequestBody();
                 List<Piece> moves = objectMapper.readValue(
                     requestBody, 
                     new TypeReference<List<Piece>>() {}
                 );
+    
+                // Debug log received moves
+                System.out.println("Received moves: " + moves);
+    
+                if (moves == null || moves.isEmpty()) {
+                    sendErrorResponse(exchange, 400, "No moves provided");
+                    return;
+                }
     
                 // Calculate score
                 int score = gameBoard.calculateMoveScore(moves);
@@ -120,70 +137,47 @@ public class GameServer {
     
                 // Convert response to JSON
                 String jsonResponse = objectMapper.writeValueAsString(response);
+                byte[] responseBytes = jsonResponse.getBytes(StandardCharsets.UTF_8);
     
                 // Send response
                 exchange.getResponseHeaders().set("Content-Type", "application/json");
-                exchange.sendResponseHeaders(200, jsonResponse.length());
+                exchange.sendResponseHeaders(200, responseBytes.length);
                 try (OutputStream os = exchange.getResponseBody()) {
-                    os.write(jsonResponse.getBytes());
+                    os.write(responseBytes);
                 }
     
             } catch (Exception e) {
+                System.err.println("Error processing score calculation: " + e.getMessage());
+                e.printStackTrace();
+                
                 // Handle errors
                 Map<String, Object> errorResponse = new HashMap<>();
                 errorResponse.put("success", false);
                 errorResponse.put("error", e.getMessage());
     
                 String jsonError = objectMapper.writeValueAsString(errorResponse);
+                byte[] errorBytes = jsonError.getBytes(StandardCharsets.UTF_8);
+                
                 exchange.getResponseHeaders().set("Content-Type", "application/json");
-                exchange.sendResponseHeaders(400, jsonError.length());
+                exchange.sendResponseHeaders(400, errorBytes.length);
                 try (OutputStream os = exchange.getResponseBody()) {
-                    os.write(jsonError.getBytes());
+                    os.write(errorBytes);
                 }
             }
-        }    
-    }
-
-    static class InitHandler implements HttpHandler {
-        @Override
-        public void handle(HttpExchange exchange) throws IOException {
-            if ("GET".equals(exchange.getRequestMethod())) {
-                try {
-                    // Check if game is initialized
-                    if (gameBoard == null) {
-                        String errorResponse = "{\"error\": \"Game not initialized\"}";
-                        exchange.getResponseHeaders().add("Content-Type", "application/json");
-                        exchange.sendResponseHeaders(400, errorResponse.length());
-                        try (OutputStream os = exchange.getResponseBody()) {
-                            os.write(errorResponse.getBytes());
-                        }
-                        return;
-                    }
+        }
     
-                    // Get the current player's hand from the game board
-                    List<Map<String,String>> playerHand = gameBoard.getCurrentHand();
-                    
-                    // Convert the hand to JSON
-                    Map<String, Object> response = new HashMap<>();
-                    response.put("hand", playerHand);
-                    
-                    String gameState = objectMapper.writeValueAsString(response);
-                    
-                    exchange.getResponseHeaders().add("Content-Type", "application/json");
-                    exchange.sendResponseHeaders(200, gameState.length());
-                    try (OutputStream os = exchange.getResponseBody()) {
-                        os.write(gameState.getBytes());
-                    }
-                } catch (Exception e) {
-                    String errorResponse = "{\"error\": \"" + e.getMessage() + "\"}";
-                    exchange.getResponseHeaders().add("Content-Type", "application/json");
-                    exchange.sendResponseHeaders(500, errorResponse.length());
-                    try (OutputStream os = exchange.getResponseBody()) {
-                        os.write(errorResponse.getBytes());
-                    }
-                }
-            } else {
-                exchange.sendResponseHeaders(405, -1); // Method not allowed
+        private void sendErrorResponse(HttpExchange exchange, int statusCode, String message) throws IOException {
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("error", message);
+    
+            String jsonError = objectMapper.writeValueAsString(errorResponse);
+            byte[] errorBytes = jsonError.getBytes(StandardCharsets.UTF_8);
+    
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(statusCode, errorBytes.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(errorBytes);
             }
         }
     }
@@ -218,7 +212,8 @@ public class GameServer {
                 // Create response with initial game state
                 Map<String, Object> response = new HashMap<>();
                 response.put("success", true);
-                response.put("initialHand", gameBoard.getCurrentHand()); // Get first player's hand
+                response.put("playerCount", playerCount);
+                response.put("initialHand", gameBoard.getHand(0)); // Get first player's hand
                 response.put("currentPlayer", 1);
 
                 // Send success response
@@ -248,5 +243,76 @@ public class GameServer {
             }
         }
     }
+
+    static class PassHandler implements HttpHandler {
+
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (!"POST".equals(exchange.getRequestMethod())) {
+                sendErrorResponse(exchange, 405, "Method not allowed");
+                return;
+            }
+    
+            try {
+                // Check if game is initialized
+                if (gameBoard == null) {
+                    sendErrorResponse(exchange, 400, "Game not initialized");
+                    return;
+                }
+                Map<String, Object> response = new HashMap<>();
+                response.put("gameState", gameBoard.getGameState());
+                
+                // Pass turn to next player
+                gameBoard.passTurn();
+                
+                // Get new hand for next player
+                List<Map<String, String>> newHand = gameBoard.getHand(gameBoard.getTurn());
+    
+                // Create response object
+                response.put("success", true);
+                response.put("newHand", newHand);
+                
+                // Add game state information
+                Map<String, Object> gameState = new HashMap<>();
+                gameState.put("currentPlayer", gameBoard.getTurn());
+                
+                // Add scores for all players
+                Map<Integer, Integer> scores = new HashMap<>();
+                for (int i = 0; i < gameBoard.getPlayerCount(); i++) {
+                    scores.put(i + 1, gameBoard.getScore(i));
+                }
+                gameState.put("scores", scores);
+                
+                response.put("gameState", gameState);
+    
+                // Convert to JSON and send response
+                String jsonResponse = objectMapper.writeValueAsString(response);
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.sendResponseHeaders(200, jsonResponse.length());
+                try (OutputStream os = exchange.getResponseBody()) {
+                    os.write(jsonResponse.getBytes());
+                }
+    
+            } catch (Exception e) {
+                sendErrorResponse(exchange, 500, "Error processing pass: " + e.getMessage());
+            }
+        }
+    
+        private void sendErrorResponse(HttpExchange exchange, int statusCode, String message) throws IOException {
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("error", message);
+    
+            String jsonError = objectMapper.writeValueAsString(errorResponse);
+            byte[] errorBytes = jsonError.getBytes(StandardCharsets.UTF_8);
+    
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(statusCode, errorBytes.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(errorBytes);
+            }
+        }
+    }
 }
+
 

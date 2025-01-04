@@ -1,4 +1,3 @@
-import com.fasterxml.jackson.annotation.JsonFormat.Shape;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import java.util.*;
@@ -10,6 +9,7 @@ public class Board {
     private Player playerTwo;
     private Player playerThree;
     private Player playerFour;
+    private int playerCount;
     private int turn;
     private Bag bag;
     private Map<String, Piece> board;
@@ -20,6 +20,7 @@ public class Board {
         width = 0;
         height = 0;
         turn = 0;
+        playerCount = numPlayers;
         board = new HashMap<>();
         bag = new Bag();
         if(numPlayers >= 2) {
@@ -36,19 +37,19 @@ public class Board {
 
     public Map<String, Object> makeMove(JsonNode movesNode) {
         List<Map<String, Object>> moves = new ArrayList<>();
-        
+        System.out.println(movesNode);
         // Convert JsonNode to List<Map<String, Object>>
-        if (movesNode.has("moves")) {
-            JsonNode movesArray = movesNode.get("moves");
-            for (JsonNode moveNode : movesArray) {
+        if (movesNode.isArray()) {
+            System.out.println("has moves");
+            for (JsonNode moveNode : movesNode) {
                 Map<String, Object> move = new HashMap<>();
-                move.put("x", moveNode.get("x").asInt());
-                move.put("y", moveNode.get("y").asInt());
+                move.put("x", moveNode.get("col").asInt());
+                move.put("y", moveNode.get("row").asInt());
                 
                 // Create Piece from JSON data
-                JsonNode pieceNode = moveNode.get("piece");
-                String pieceName = pieceNode.get("color").asText() + " " + pieceNode.get("shape").asText();
-                Piece piece = new Piece(pieceName);
+                // JsonNode pieceNode = moveNode.get("piece");
+                String[] name = moveNode.get("piece").asText().split(" ");
+                Piece piece = new Piece(name);
                 move.put("piece", piece);
                 
                 moves.add(move);
@@ -57,6 +58,21 @@ public class Board {
         
         // Use existing logic with converted moves
         return makeMove(moves);
+    }
+
+    public int getPlayerCount() {
+        return playerCount;
+    }
+
+    public int getScore(int playerIndex) {
+        Player player = switch (playerIndex) {
+            case 0 -> playerOne;
+            case 1 -> playerTwo;
+            case 2 -> playerThree;
+            case 3 -> playerFour;
+            default -> throw new IllegalStateException("Invalid turn state");
+        };
+        return player.getScore();
     }
     
     /**
@@ -67,48 +83,44 @@ public class Board {
     public Map<String, Object> makeMove(List<Map<String, Object>> moves) {
         Map<String, Object> response = new HashMap<>();
         if(moves.isEmpty()) {
+            response.put("success", false);
             response.put("error", "No moves provided");
             return response;
         }
         // Get current player
-        Player currentPlayer = switch (turn % 4) {
+        Player currentPlayer = switch (turn % playerCount) {
             case 0 -> playerOne;
             case 1 -> playerTwo;
-            case 2 -> playerThree != null ? playerThree : playerOne;
-            case 3 -> playerFour != null ? playerFour : playerTwo;
+            case 2 -> playerThree;
+            case 3 -> playerFour;
             default -> throw new IllegalStateException("Invalid turn state");
         };
-        if (board.isEmpty()) {
-            if(isValidFirstMoves(moves)) {
-                response.put("success", true);
-                response.put("message", "First move successful");
-                return response;
-            }
-        }
-        // First validate all moves
-        for (Map<String, Object> move : moves) {
-            int x = (int) move.get("x");
-            int y = (int) move.get("y");
-            Piece piece = (Piece) move.get("piece");
+        if(!board.isEmpty()) {
+            // First validate all moves
+            for (Map<String, Object> move : moves) {
+                int x = (int) move.get("x");
+                int y = (int) move.get("y");
+                Piece piece = (Piece) move.get("piece");
 
-            // Check if the position is already occupied
-            if (findPieceAt(x, y) != null) {
-                response.put("success", false);
-                response.put("error", "Position already occupied");
-                return response;
-            }
+                // Check if the position is already occupied
+                if (findPieceAt(x, y) != null) {
+                    response.put("success", false);
+                    response.put("error", "Position already occupied");
+                    return response;
+                }
 
-            // Validate the move according to game rules
-            if (!board.isEmpty() && !isValidMove(x, y, piece)) {
-                response.put("success", false);
-                response.put("error", "Invalid move");
-            }
+                // Check if player has the piece in their hand
 
-            // Check if player has the piece in their hand
-            if (!currentPlayer.getHand().contains(piece)) {
-                response.put("success", false);
-                response.put("error", "Piece not in player's hand");
+                if (!currentPlayer.hasPiece(piece)) {
+                    response.put("success", false);
+                    response.put("error", "Player does not have the piece in their hand");
+                    return response;
+                }
             }
+        } else if (!isValidFirstMoves(moves)) {
+            response.put("success", false);
+            response.put("error", "Invalid first move");
+            return response;
         }
         // If all moves are valid, execute them
         try {
@@ -116,7 +128,12 @@ public class Board {
                 int x = (int) move.get("x");
                 int y = (int) move.get("y");
                 Piece piece = (Piece) move.get("piece");
-
+                // Validate the move according to game rules
+                if (!board.isEmpty() && !isValidMove(x, y, piece)) {
+                    response.put("success", false);
+                    response.put("error", "Invalid move");
+                    return response;
+                }
                 // Place the piece on the board
                 board.put(x + ", " + y, piece);
                 piece.xCoord = x;
@@ -124,30 +141,29 @@ public class Board {
 
                 // Remove the piece from player's hand
                 currentPlayer.removePiece(piece);
-                updateDimensions();
             }
             response.put("success", true);
             // Calculate score for the moves
             int moveScore = calculateMoveScore(moves.stream()
                                                 .map(m -> (Piece)m.get("piece"))
                                                 .collect(Collectors.toList()));
-            
+            System.out.println("Score Calculated");
             // Add score to current player
             currentPlayer.addScore(moveScore);
-
+            updateDimensions();
             // Draw new tiles
             if(!bag.isEmpty()) {
-                currentPlayer.addPieces(bag.draw(moves.size()));
+                List<Piece> Pieces = bag.draw(moves.size());
+                System.out.println("Pieces: " + Pieces);
+                currentPlayer.addPieces(Pieces);
             } else if(bag.isEmpty() && currentPlayer.getHand().isEmpty()) {
                 currentPlayer.addScore(6);
             }
+            System.out.println("Pieces Drawn");
             // Increment turn
-            if(turn == 3) {
-                turn = 0;
-            } else {
-                turn++;
-            }
             response.put("gameState", getGameState());
+            passTurn();
+            System.out.println("Everything ready");
             return response;
         } catch (Exception e) {
             response.put("success", false);
@@ -195,50 +211,51 @@ public class Board {
     }
 
     private void updateDimensions() {
-        int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE;
-        int minY = Integer.MAX_VALUE, maxY = Integer.MIN_VALUE;
+        int maxX = Integer.MIN_VALUE;
+        int maxY = Integer.MIN_VALUE;
 
         for (String key : board.keySet()) {
             String[] coords = key.split(", ");
             int x = Integer.parseInt(coords[0]);
             int y = Integer.parseInt(coords[1]);
 
-            minX = Math.min(minX, x);
             maxX = Math.max(maxX, x);
-            minY = Math.min(minY, y);
             maxY = Math.max(maxY, y);
         }
 
-        width = maxX - minX + 1;
-        height = maxY - minY + 1;
+        width = maxX + 1;
+        height = maxY + 1;
     }
 
     /**
      * Gets the current game state to send back to client
      */
-    private Map<String, Object> getGameState() {
+    public Map<String, Object> getGameState() {
         Map<String, Object> gameState = new HashMap<>();
         
         // Add current board state
         gameState.put("board", getBoardState());
-        
+        System.out.println("Boardstate done");
         // Add current player's hand
-        Player currentPlayer = switch (turn % 4) {
+        Player currentPlayer = switch (turn % playerCount) {
             case 0 -> playerOne;
             case 1 -> playerTwo;
-            case 2 -> playerThree != null ? playerThree : playerOne;
-            case 3 -> playerFour != null ? playerFour : playerTwo;
+            case 2 -> playerThree;
+            case 3 -> playerFour;
             default -> throw new IllegalStateException("Invalid turn state");
         };
-        gameState.put("hand", currentPlayer.getHand());
-        
+        gameState.put("hand", getCurrentHand());
+        System.out.println(getHand(1));
+        gameState.put("nextHand", getHand((turn % playerCount) + 1));
+        System.out.println("hand done");
         // Add game status information
         gameState.put("turn", turn);
+        gameState.put("score", currentPlayer.getScore());
         gameState.put("remainingTiles", bag.size());
         gameState.put("width", width);
         gameState.put("height", height);
         gameState.put("gameOver", gameOver());
-        
+        System.out.println(gameState);
         return gameState;
     }
 
@@ -246,18 +263,25 @@ public class Board {
      * Validates if a move is legal according to Qwirkle rules
      */
     private boolean isValidMove(int x, int y, Piece piece) {
+        System.out.println("Board: " + formatBoard());
+        System.out.println("Piece location: "+ x + ", " + y);
         // Get adjacent pieces
         List<Piece> adjacentPieces = getAdjacentPieces(x, y);
-        
+        if(adjacentPieces.isEmpty()) {
+            System.out.println("No Adjacent Pieces");
+            return false;
+        }
         // Check if placement creates valid lines
         for (Piece adjacent : adjacentPieces) {
             if (!isValidConnection(piece, adjacent)) {
+                System.out.println("invalid connection");
                 return false;
             }
         }
         
         // Check for duplicate pieces in lines
         if (hasDuplicatesInLine(x, y, piece)) {
+            System.out.println("duplicate in line");
             return false;
         }
         
@@ -283,8 +307,12 @@ public class Board {
      * Checks if a piece can connect to an adjacent piece according to Qwirkle rules
      */
     private boolean isValidConnection(Piece newPiece, Piece existingPiece) {
-        return newPiece.name[0].equals(existingPiece.name[0]) ||
-            newPiece.name[1].equals(existingPiece.name[1]);
+        return !(newPiece.name[0].equals(existingPiece.name[0]) &&
+            newPiece.name[1].equals(existingPiece.name[1]));
+    }
+
+    public void passTurn() {
+        turn++;
     }
 
     /**
@@ -295,9 +323,9 @@ public class Board {
         // Implementation to convert linked piece structure to 2D array
         // This would involve traversing from overallRoot and mapping positions
         for(String coordinates : board.keySet()) {
-            String[] coords = coordinates.split(", ");
-            int x = Integer.parseInt(coords[0]);
-            int y = Integer.parseInt(coords[1]);
+            String[] coords = coordinates.split(",");
+            int x = Integer.valueOf(coords[0].trim());
+            int y = Integer.valueOf(coords[1].trim());
             boardState[y][x] = board.get(coordinates);
         }
         return boardState;
@@ -306,18 +334,46 @@ public class Board {
      * Checks if placing a piece would create duplicate pieces in a line
      */
     private boolean hasDuplicatesInLine(int x, int y, Piece piece) {
-        for(int i = x - 5; i < x + 5; i++) {
+        for(int i = 0; i < x + 5; i++) {
             if(i != x) {
                 Piece p = findPieceAt(i, y);
+                if(p == null) {
+                    break;
+                }
+                if(p.name[0].equals(piece.name[0]) && p.name[1].equals(piece.name[1])) {
+                    return true;
+                }
+            }
+        }
+        for(int i = 0; i > x - 5; i--) {
+            if(i != x) {
+                Piece p = findPieceAt(i, y);
+                if(p == null) {
+                    break;
+                }
+                if(p.name[0].equals(piece.name[0]) && p.name[1].equals(piece.name[1])) {
+                    return true;
+                }
+            }
+        }
+        for(int i = 0; i < y + 5; i++) {
+            if(i != y) {
+                Piece p = findPieceAt(x, i);
+                if(p == null) {
+                    break;
+                }
                 if(p != null && p.name[0].equals(piece.name[0]) && p.name[1].equals(piece.name[1])) {
                     return true;
                 }
             }
         }
-        for(int i = y - 5; i < y + 5; i++) {
+        for(int i = 0; i > y - 5; i--) {
             if(i != y) {
                 Piece p = findPieceAt(x, i);
-                if(p != null && p.name[0].equals(piece.name[0]) && p.name[1].equals(piece.name[1])) {
+                if(p == null) {
+                    break;
+                }
+                if(p.name[0].equals(piece.name[0]) && p.name[1].equals(piece.name[1])) {
                     return true;
                 }
             }
@@ -334,11 +390,11 @@ public class Board {
     }
 
     public List<Map<String, String>> getHand(int playerIndex) {
-        Player currentPlayer = switch (playerIndex) {
+        Player currentPlayer = switch (playerIndex % 4) {
             case 0 -> playerOne;
             case 1 -> playerTwo;
-            case 2 -> playerThree;
-            case 3 -> playerFour;
+            case 2 -> playerThree != null ? playerThree : playerOne;
+            case 3 -> playerFour != null ? playerFour : playerTwo;
             default -> throw new IllegalStateException("Invalid player index");
         };
         List<Map<String, String>> formattedHand = new ArrayList<>();
@@ -353,8 +409,28 @@ public class Board {
             pieceData.put("color", cssColor);
             
             // Convert the tile's shape to a symbol
-            String symbol = convertShapeToSymbol(tile.name[1]);
+            String symbol = tile.name[1];
             pieceData.put("shape", symbol);
+            
+            formattedHand.add(pieceData);
+        }
+        
+        return formattedHand;
+    }
+    private List<Map<String, String>> formatBoard() {
+        List<Map<String, String>> formattedHand = new ArrayList<>();
+
+        for (String coords : board.keySet()) {
+            Map<String, String> pieceData = new HashMap<>();
+            Piece tile = board.get(coords);
+            // Convert the tile's color to a CSS-compatible color
+            String cssColor = tile.name[0].toLowerCase();
+            pieceData.put("color", cssColor);
+            
+            // Convert the tile's shape to a symbol
+            String symbol = tile.name[1];
+            pieceData.put("shape", symbol);
+            pieceData.put("coords", coords);
             
             formattedHand.add(pieceData);
         }
@@ -363,18 +439,18 @@ public class Board {
     }
 
     private String convertShapeToSymbol(String shape) {
-        switch (shape) {
-            case "Circle":
+        switch (shape.toLowerCase()) {
+            case "circle":
                 return "C";
-            case "Square": 
+            case "square": 
                 return "S";
-            case "Diamond":
+            case "diamond":
                 return "D";
-            case "8pt-Star":
+            case "8pt-star":
                 return "8";
-            case "Clover":
+            case "clover":
                 return "C";
-            case "4pt-Star":
+            case "4pt-star":
                 return "4";
             default:
                 return "?";
@@ -386,10 +462,19 @@ public class Board {
     }
 
     public boolean gameOver() {
-        return bag.isEmpty() && (playerOne.getHand().isEmpty() || playerTwo.getHand().isEmpty() || playerThree.getHand().isEmpty() || playerFour.getHand().isEmpty());
+        if(playerThree == null) {
+            return bag.isEmpty() && (playerOne.getHand().isEmpty() || playerTwo.getHand().isEmpty());
+        } else if(playerFour == null) {
+            return bag.isEmpty() && (playerOne.getHand().isEmpty() || playerTwo.getHand().isEmpty()
+            || playerThree.getHand().isEmpty());
+        } else {
+            return bag.isEmpty() && (playerOne.getHand().isEmpty() || playerTwo.getHand().isEmpty() 
+            || playerThree.getHand().isEmpty() || playerFour.getHand().isEmpty());
+        }
     }
 
     public int calculateMoveScore(List<Piece> moves) {
+        System.out.println(moves);
         int totalScore = 0;
         
         for (Piece move : moves) {
@@ -407,46 +492,74 @@ public class Board {
     }
     
     private int calculateLineScore(Piece move, boolean horizontal) {
-        List<Piece> line = getLine(move, horizontal);
-        
-        if (line.size() <= 1) {
-            return 0;
-        }
-        
-        int score = line.size();
+        List<Piece> posline = getPositiveLine(move, horizontal);
+        List<Piece> negline = getNegativeLine(move, horizontal);
+        int score = posline.size() + negline.size();
         
         // Check for Qwirkle (6 tiles)
-        if (line.size() == 6) {
+        if (score == 6) {
             score += 6; // Bonus points for Qwirkle
         }
         
         return score;
     }
     
-    private List<Piece> getLine(Piece move, boolean horizontal) {
+    private List<Piece> getPositiveLine(Piece move, boolean horizontal) {
+        System.out.println("Positive " + (horizontal ? "horizontal" : "vertical") + " line");
+        System.out.println("Board: " + board);
         List<Piece> line = new ArrayList<>();
-        int row = move.xCoord;
-        int col = move.yCoord;
+        int row = move.yCoord;
+        int col = move.xCoord;
         
         // Check in both directions
-        for (int i = -5; i <= 5; i++) {
+        for (int i = 0; i <= 5; i++) {
             int checkRow = horizontal ? row : row + i;
             int checkCol = horizontal ? col + i : col;
-            
-            if (checkRow < 0 || checkRow >= width*height || 
-                checkCol < 0 || checkCol >= width*height) {
-                continue;
-            }
-            
+            // if (checkRow < 0 || checkRow >= width*height || 
+            //     checkCol < 0 || checkCol >= width*height) {
+            //     continue;
+            // }
+            System.out.println("Row: " + checkRow + " Column: " + checkCol);
             Piece tile = board.get(checkRow + "," + checkCol);
+            System.out.println("Piece: " + tile);
             if (tile == null) {
                 if (line.size() > 0) break; // Break if we find a gap after finding tiles
                 continue;
             }
             
             line.add(tile);
+            System.out.println("Line: " + line + " size: " + line.size());
         }
         
+        return line;
+    }
+
+    private List<Piece> getNegativeLine(Piece move, boolean horizontal) {
+        System.out.println("Negative " + (horizontal ? "horizontal" : "vertical") + " line");
+        List<Piece> line = new ArrayList<>();
+        int row = move.yCoord;
+        int col = move.xCoord;
+
+        // Check in both directions
+        for (int i = 0; i <= 5; i++) {
+            int checkRow = horizontal ? row : row - i;
+            int checkCol = horizontal ? col - i : col;
+            // if (checkRow < 0 || checkRow >= width*height ||
+            //     checkCol < 0 || checkCol >= width*height) {
+            //     continue;
+            // }
+            System.out.println("Row: " + checkRow + " Column: " + checkCol);
+            Piece tile = board.get(checkRow + ", " + checkCol);
+            System.out.println("Piece " + tile);
+            if (tile == null) {
+                if (line.size() > 0) break; // Break if we find a gap after finding tiles
+                continue;
+            }
+
+            line.add(tile);
+            System.out.println("Line: " + line);
+        }
+
         return line;
     }
 }
