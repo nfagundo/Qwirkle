@@ -307,8 +307,7 @@ public class Board {
      * Checks if a piece can connect to an adjacent piece according to Qwirkle rules
      */
     private boolean isValidConnection(Piece newPiece, Piece existingPiece) {
-        return !(newPiece.name[0].equals(existingPiece.name[0]) &&
-            newPiece.name[1].equals(existingPiece.name[1]));
+        return newPiece.equals(existingPiece);
     }
 
     public void passTurn() {
@@ -437,30 +436,32 @@ public class Board {
         
         return formattedHand;
     }
-
-    private String convertShapeToSymbol(String shape) {
-        switch (shape.toLowerCase()) {
-            case "circle":
-                return "C";
-            case "square": 
-                return "S";
-            case "diamond":
-                return "D";
-            case "8pt-star":
-                return "8";
-            case "clover":
-                return "C";
-            case "4pt-star":
-                return "4";
-            default:
-                return "?";
-        }
-    }
     
     public int getTurn() {
         return turn;
     }
 
+    public List<Map<String, String>> formatList(List<Piece> list) {
+        List<Map<String, String>> formattedList = new ArrayList<>();
+        
+        for (Piece tile : list) {
+            Map<String, String> pieceData = new HashMap<>();
+            
+            // Convert the tile's color to a CSS-compatible color
+            String cssColor = tile.name[0].toLowerCase();
+            pieceData.put("color", cssColor);
+            
+            // Convert the tile's shape to a symbol
+            String symbol = tile.name[1];
+            pieceData.put("shape", symbol);
+
+            pieceData.put("coords", tile.xCoord + ", " + tile.yCoord);
+            
+            formattedList.add(pieceData);
+        }
+        
+        return formattedList;
+    }
     public boolean gameOver() {
         if(playerThree == null) {
             return bag.isEmpty() && (playerOne.getHand().isEmpty() || playerTwo.getHand().isEmpty());
@@ -474,92 +475,151 @@ public class Board {
     }
 
     public int calculateMoveScore(List<Piece> moves) {
-        System.out.println(moves);
+        List<Map<String, String>> formatMoves = formatList(moves);
+        System.out.println("Moves: " + formatMoves);
+        System.out.println("Board: " + formatBoard());
         int totalScore = 0;
-        
-        for (Piece move : moves) {
-            // Calculate horizontal line score
-            int horizontalScore = calculateLineScore(move, true);
-            // Calculate vertical line score
-            int verticalScore = calculateLineScore(move, false);
-            
-            // If this is the first move, count the tile only once
-            totalScore += (horizontalScore + verticalScore - 
-                (horizontalScore > 0 && verticalScore > 0 ? 1 : 0));
+        if(moves.size() == 1 ) {
+            for (Piece piece : moves) {
+                int vertScore = calculateLineScore(piece, moves, false);
+    
+                int horiScore = calculateLineScore(piece, moves, true);
+                System.out.println("vertScore: " + vertScore);
+                System.out.println("horiScore: " + horiScore);
+                totalScore += vertScore + horiScore;
+            }
+        } else if((moves.get(0).yCoord != moves.get(1).yCoord + 1 || moves.get(0).yCoord != moves.get(1).yCoord - 1) || 
+            (moves.get(0).xCoord != moves.get(1).xCoord + 1 || moves.get(0).xCoord != moves.get(1).xCoord - 1)) {
+            int vertScore = calculateApartLineScore(moves, false);
+
+            int horiScore = calculateApartLineScore(moves, true);
+            System.out.println("vertScore: " + vertScore);
+            System.out.println("horiScore: " + horiScore);
+            totalScore += vertScore + horiScore;
+        } else {
+            for (Piece piece : moves) {
+                int vertScore = calculateLineScore(piece, moves, false);
+    
+                int horiScore = calculateLineScore(piece, moves, true);
+                System.out.println("vertScore: " + vertScore);
+                System.out.println("horiScore: " + horiScore);
+                totalScore += vertScore + horiScore;
+            }
         }
-        
         return totalScore;
     }
-    
-    private int calculateLineScore(Piece move, boolean horizontal) {
-        List<Piece> posline = getPositiveLine(move, horizontal);
-        List<Piece> negline = getNegativeLine(move, horizontal);
-        int score = posline.size() + negline.size();
-        
-        // Check for Qwirkle (6 tiles)
-        if (score == 6) {
-            score += 6; // Bonus points for Qwirkle
-        }
-        
-        return score;
-    }
-    
-    private List<Piece> getPositiveLine(Piece move, boolean horizontal) {
-        System.out.println("Positive " + (horizontal ? "horizontal" : "vertical") + " line");
-        System.out.println("Board: " + board);
-        List<Piece> line = new ArrayList<>();
-        int row = move.yCoord;
-        int col = move.xCoord;
-        
-        // Check in both directions
-        for (int i = 0; i <= 5; i++) {
-            int checkRow = horizontal ? row : row + i;
+
+    public int calculateLineScore(Piece piece, List<Piece> moves, boolean horizontal) {
+        System.out.println("Piece: " + piece.name[0] + ", " + piece.name[1] + 
+            " Location: " + piece.xCoord + ", " + piece.yCoord);
+        System.out.println((horizontal ? "Horizontal" : "Vertical") + " line");
+        int col = piece.xCoord;
+        int row = piece.yCoord;
+        boolean delete = true;
+        Set<Piece> line = new HashSet<>();
+        line.add(piece);
+        System.out.println("Positive");
+        for(int i = 1; i < 5; i++) {
             int checkCol = horizontal ? col + i : col;
-            // if (checkRow < 0 || checkRow >= width*height || 
-            //     checkCol < 0 || checkCol >= width*height) {
-            //     continue;
-            // }
-            System.out.println("Row: " + checkRow + " Column: " + checkCol);
-            Piece tile = board.get(checkRow + "," + checkCol);
-            System.out.println("Piece: " + tile);
-            if (tile == null) {
-                if (line.size() > 0) break; // Break if we find a gap after finding tiles
-                continue;
+            int checkRow = horizontal ? row : row + i;
+            System.out.println("checkCol: " + checkCol + " checkRow: " + checkRow);
+            System.out.println("Score: " + line.size());
+            if(board.get(checkCol + ", " + checkRow) == null) {
+                break;
             }
-            
-            line.add(tile);
-            System.out.println("Line: " + line + " size: " + line.size());
+            if(moves.contains(board.get(checkCol + ", " + checkRow))) {
+                delete = false;
+                break;
+            }
+            line.add(board.get(checkCol + ", " + checkRow));
         }
-        
-        return line;
+        System.out.println("Negative");
+        for(int i = 1; i < 5; i++) {
+            int checkCol = horizontal ? col - i : col;
+            int checkRow = horizontal ? row : row - i;
+            System.out.println("checkCol: " + checkCol + " checkRow: " + checkRow);
+            System.out.println("Score: " + line.size());
+            if(board.get(checkCol + ", " + checkRow) == null) {
+                break;
+            }
+            if(moves.contains(board.get(checkCol + ", " + checkRow))) {
+                delete = false;
+                break;
+            }
+            line.add(board.get(checkCol + ", " + checkRow));
+        }
+        if(line.size() == 1 && delete) {
+            line.clear();
+        }
+        return line.size();
     }
 
-    private List<Piece> getNegativeLine(Piece move, boolean horizontal) {
-        System.out.println("Negative " + (horizontal ? "horizontal" : "vertical") + " line");
-        List<Piece> line = new ArrayList<>();
-        int row = move.yCoord;
-        int col = move.xCoord;
-
-        // Check in both directions
-        for (int i = 0; i <= 5; i++) {
-            int checkRow = horizontal ? row : row - i;
-            int checkCol = horizontal ? col - i : col;
-            // if (checkRow < 0 || checkRow >= width*height ||
-            //     checkCol < 0 || checkCol >= width*height) {
-            //     continue;
-            // }
-            System.out.println("Row: " + checkRow + " Column: " + checkCol);
-            Piece tile = board.get(checkRow + ", " + checkCol);
-            System.out.println("Piece " + tile);
-            if (tile == null) {
-                if (line.size() > 0) break; // Break if we find a gap after finding tiles
-                continue;
+    public int calculateApartLineScore(List<Piece> moves, boolean horizontal) {
+        boolean apart = false;
+        int totalScore = 0;
+        for(Piece piece : moves) {
+            System.out.println("Piece: " + piece.name[0] + ", " + piece.name[1] + 
+                " Location: " + piece.xCoord + ", " + piece.yCoord);
+            System.out.println((horizontal ? "Horizontal" : "Vertical") + " line");
+            int col = piece.xCoord;
+            int row = piece.yCoord;
+            boolean delete = true;
+            Set<Piece> line = new HashSet<>();
+            line.add(piece);
+            Piece temp = piece;
+            System.out.println("Positive");
+            for(int i = 1; i < 5; i++) {
+                int checkCol = horizontal ? col + i : col;
+                int checkRow = horizontal ? row : row + i;
+                System.out.println("checkCol: " + checkCol + " checkRow: " + checkRow);
+                System.out.println("Score: " + line.size());
+                if(board.get(checkCol + ", " + checkRow) == null) {
+                    break;
+                }
+                Piece add = board.get(checkCol + ", " + checkRow);
+                if(moves.contains(add)) {
+                    delete = false;
+                    if(!apart && (horizontal ? (temp.xCoord != add.xCoord + 1 || temp.xCoord != add.xCoord - 1) 
+                        : (temp.yCoord != add.yCoord + 1 || temp.yCoord != add.yCoord - 1))) {
+                        apart = true;
+                    } else if(apart) {
+                        line.clear();
+                        line.add(piece);
+                    }
+                    break;
+                }
+                line.add(add);
+                temp = add;
             }
-
-            line.add(tile);
-            System.out.println("Line: " + line);
+            System.out.println("Negative");
+            for(int i = 1; i < 5; i++) {
+                int checkCol = horizontal ? col - i : col;
+                int checkRow = horizontal ? row : row - i;
+                System.out.println("checkCol: " + checkCol + " checkRow: " + checkRow);
+                System.out.println("Score: " + line.size());
+                if(board.get(checkCol + ", " + checkRow) == null) {
+                    break;
+                }
+                Piece add = board.get(checkCol + ", " + checkRow);
+                if(moves.contains(add)) {
+                    delete = false;
+                    if(!apart && (horizontal ? (temp.xCoord != add.xCoord + 1 || temp.xCoord != add.xCoord - 1)
+                        : (temp.yCoord != add.yCoord + 1 || temp.yCoord != add.yCoord - 1))) {
+                        apart = true;
+                    } else if(apart) {
+                        line.clear();
+                        line.add(piece);
+                    }
+                    break;
+                }
+                line.add(add);
+                temp = add;
+            }
+            if(line.size() == 1 && delete) {
+                line.clear();
+            }
+            totalScore += line.size();
         }
-
-        return line;
+        return totalScore;
     }
 }

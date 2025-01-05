@@ -27,8 +27,8 @@ public class Piece {
         this.yCoord = 0;
     }
 
-    public boolean check(Piece other) {
-        return (!this.name[0].equals(other.name[0]) && this.name[1].equals(other.name[1]));
+    public boolean equals(Piece other) {
+        return (!(this.name[0].equals(other.name[0]) && this.name[1].equals(other.name[1]))) && (this.name[0].equals(other.name[0]) || this.name[1].equals(other.name[1]));
     }
     
 }
