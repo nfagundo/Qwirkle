@@ -128,12 +128,6 @@ public class Board {
                 int x = (int) move.get("x");
                 int y = (int) move.get("y");
                 Piece piece = (Piece) move.get("piece");
-                // Validate the move according to game rules
-                if (!board.isEmpty() && !isValidMove(x, y, piece)) {
-                    response.put("success", false);
-                    response.put("error", "Invalid move");
-                    return response;
-                }
                 // Place the piece on the board
                 board.put(x + ", " + y, piece);
                 piece.xCoord = x;
@@ -142,6 +136,29 @@ public class Board {
                 // Remove the piece from player's hand
                 currentPlayer.removePiece(piece);
             }
+
+            for(Map<String, Object> move : moves) {
+                int x = (int) move.get("x");
+                int y = (int) move.get("y");
+                Piece piece = (Piece) move.get("piece");
+
+                // Validate the move according to game rules
+                if (!board.isEmpty() && !isValidMove(x, y, piece)) {
+                    response.put("success", false);
+                    response.put("error", "Invalid move");
+                    for(Map<String, Object> m : moves) {
+                        int xCoord = (int) m.get("x");
+                        int yCoord = (int) m.get("y");
+                        Piece p = (Piece) m.get("piece");
+                        board.remove(xCoord + ", " + yCoord);
+                        currentPlayer.addPiece(p);
+                    }
+                    return response;
+                }
+
+
+            }
+            
             response.put("success", true);
             // Calculate score for the moves
             int moveScore = calculateMoveScore(moves.stream()
@@ -479,32 +496,21 @@ public class Board {
         System.out.println("Moves: " + formatMoves);
         System.out.println("Board: " + formatBoard());
         int totalScore = 0;
-        if(moves.size() == 1 ) {
-            for (Piece piece : moves) {
-                int vertScore = calculateLineScore(piece, moves, false);
-    
-                int horiScore = calculateLineScore(piece, moves, true);
-                System.out.println("vertScore: " + vertScore);
-                System.out.println("horiScore: " + horiScore);
-                totalScore += vertScore + horiScore;
+        Piece temp = moves.get(0);
+        for (Piece piece : moves) {
+            int vertScore = 0;
+            int horiScore = 0;
+            if(temp.yCoord == piece.yCoord + 1 
+                || temp.yCoord == piece.yCoord - 1) {
+                vertScore = calculateLineScore(piece, moves, false);
             }
-        } else if((moves.get(0).yCoord != moves.get(1).yCoord + 1 || moves.get(0).yCoord != moves.get(1).yCoord - 1) || 
-            (moves.get(0).xCoord != moves.get(1).xCoord + 1 || moves.get(0).xCoord != moves.get(1).xCoord - 1)) {
-            int vertScore = calculateApartLineScore(moves, false);
-
-            int horiScore = calculateApartLineScore(moves, true);
+            if(temp.xCoord == piece.xCoord + 1
+                || temp.xCoord == piece.xCoord - 1) {
+                horiScore = calculateLineScore(piece, moves, true);
+            }
             System.out.println("vertScore: " + vertScore);
             System.out.println("horiScore: " + horiScore);
             totalScore += vertScore + horiScore;
-        } else {
-            for (Piece piece : moves) {
-                int vertScore = calculateLineScore(piece, moves, false);
-    
-                int horiScore = calculateLineScore(piece, moves, true);
-                System.out.println("vertScore: " + vertScore);
-                System.out.println("horiScore: " + horiScore);
-                totalScore += vertScore + horiScore;
-            }
         }
         return totalScore;
     }
