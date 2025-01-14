@@ -71,7 +71,16 @@ public class Bag {
         return drawn;
     }
 
-
+    public List<Piece> redrawHand(List<Piece> currentHand) {
+        // Return pieces to the bag
+        for (Piece piece : currentHand) {
+            pieces.merge(piece, 1, Integer::sum);
+        }
+        
+        // Draw new pieces
+        return draw(currentHand.size());
+    }
+    
     public boolean isEmpty() {
         return pieces.isEmpty();
     }

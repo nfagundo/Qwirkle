@@ -65,7 +65,7 @@ public class Board {
     }
 
     public int getScore(int playerIndex) {
-        Player player = switch (playerIndex) {
+        Player player = switch (playerIndex % playerCount) {
             case 0 -> playerOne;
             case 1 -> playerTwo;
             case 2 -> playerThree;
@@ -88,13 +88,7 @@ public class Board {
             return response;
         }
         // Get current player
-        Player currentPlayer = switch (turn % playerCount) {
-            case 0 -> playerOne;
-            case 1 -> playerTwo;
-            case 2 -> playerThree;
-            case 3 -> playerFour;
-            default -> throw new IllegalStateException("Invalid turn state");
-        };
+        Player currentPlayer =  getCurrentPlayer();
         if(!board.isEmpty()) {
             // First validate all moves
             for (Map<String, Object> move : moves) {
@@ -158,7 +152,7 @@ public class Board {
 
 
             }
-            
+
             response.put("success", true);
             // Calculate score for the moves
             int moveScore = calculateMoveScore(moves.stream()
@@ -254,13 +248,7 @@ public class Board {
         gameState.put("board", getBoardState());
         System.out.println("Boardstate done");
         // Add current player's hand
-        Player currentPlayer = switch (turn % playerCount) {
-            case 0 -> playerOne;
-            case 1 -> playerTwo;
-            case 2 -> playerThree;
-            case 3 -> playerFour;
-            default -> throw new IllegalStateException("Invalid turn state");
-        };
+        Player currentPlayer = getCurrentPlayer();
         gameState.put("hand", getCurrentHand());
         System.out.println(getHand(1));
         gameState.put("nextHand", getHand((turn % playerCount) + 1));
@@ -405,12 +393,22 @@ public class Board {
         return getHand(turn);
     }
 
-    public List<Map<String, String>> getHand(int playerIndex) {
-        Player currentPlayer = switch (playerIndex % 4) {
+    public Player getCurrentPlayer() {
+        return switch (turn % playerCount) {
             case 0 -> playerOne;
             case 1 -> playerTwo;
-            case 2 -> playerThree != null ? playerThree : playerOne;
-            case 3 -> playerFour != null ? playerFour : playerTwo;
+            case 2 -> playerThree;
+            case 3 -> playerFour;
+            default -> throw new IllegalStateException("Invalid turn state");
+        };
+    }
+
+    public List<Map<String, String>> getHand(int playerIndex) {
+        Player currentPlayer = switch (playerIndex % playerCount) {
+            case 0 -> playerOne;
+            case 1 -> playerTwo;
+            case 2 -> playerThree;
+            case 3 -> playerFour;
             default -> throw new IllegalStateException("Invalid player index");
         };
         List<Map<String, String>> formattedHand = new ArrayList<>();
@@ -501,12 +499,16 @@ public class Board {
             int vertScore = 0;
             int horiScore = 0;
             if(temp.yCoord == piece.yCoord + 1 
-                || temp.yCoord == piece.yCoord - 1) {
+                || temp.yCoord == piece.yCoord - 1 || temp.yCoord == piece.yCoord) {
                 vertScore = calculateLineScore(piece, moves, false);
+            } else {
+                vertScore = 1;
             }
             if(temp.xCoord == piece.xCoord + 1
-                || temp.xCoord == piece.xCoord - 1) {
+                || temp.xCoord == piece.xCoord - 1 || temp.xCoord == piece.xCoord) {
                 horiScore = calculateLineScore(piece, moves, true);
+            } else {
+                horiScore = 1;
             }
             System.out.println("vertScore: " + vertScore);
             System.out.println("horiScore: " + horiScore);
@@ -529,7 +531,7 @@ public class Board {
             int checkCol = horizontal ? col + i : col;
             int checkRow = horizontal ? row : row + i;
             System.out.println("checkCol: " + checkCol + " checkRow: " + checkRow);
-            System.out.println("Score: " + line.size());
+            System.out.println("Score Before: " + line.size());
             if(board.get(checkCol + ", " + checkRow) == null) {
                 break;
             }
@@ -538,13 +540,14 @@ public class Board {
                 break;
             }
             line.add(board.get(checkCol + ", " + checkRow));
+            System.out.println("Score After: " + line.size());
         }
         System.out.println("Negative");
         for(int i = 1; i < 5; i++) {
             int checkCol = horizontal ? col - i : col;
             int checkRow = horizontal ? row : row - i;
             System.out.println("checkCol: " + checkCol + " checkRow: " + checkRow);
-            System.out.println("Score: " + line.size());
+            System.out.println("Score Before: " + line.size());
             if(board.get(checkCol + ", " + checkRow) == null) {
                 break;
             }
@@ -553,79 +556,38 @@ public class Board {
                 break;
             }
             line.add(board.get(checkCol + ", " + checkRow));
+            System.out.println("Score After: " + line.size());
         }
         if(line.size() == 1 && delete) {
             line.clear();
         }
+        if(line.size() == 6) {
+            return 12;
+        }
         return line.size();
     }
 
-    public int calculateApartLineScore(List<Piece> moves, boolean horizontal) {
-        boolean apart = false;
-        int totalScore = 0;
-        for(Piece piece : moves) {
-            System.out.println("Piece: " + piece.name[0] + ", " + piece.name[1] + 
-                " Location: " + piece.xCoord + ", " + piece.yCoord);
-            System.out.println((horizontal ? "Horizontal" : "Vertical") + " line");
-            int col = piece.xCoord;
-            int row = piece.yCoord;
-            boolean delete = true;
-            Set<Piece> line = new HashSet<>();
-            line.add(piece);
-            Piece temp = piece;
-            System.out.println("Positive");
-            for(int i = 1; i < 5; i++) {
-                int checkCol = horizontal ? col + i : col;
-                int checkRow = horizontal ? row : row + i;
-                System.out.println("checkCol: " + checkCol + " checkRow: " + checkRow);
-                System.out.println("Score: " + line.size());
-                if(board.get(checkCol + ", " + checkRow) == null) {
-                    break;
-                }
-                Piece add = board.get(checkCol + ", " + checkRow);
-                if(moves.contains(add)) {
-                    delete = false;
-                    if(!apart && (horizontal ? (temp.xCoord != add.xCoord + 1 || temp.xCoord != add.xCoord - 1) 
-                        : (temp.yCoord != add.yCoord + 1 || temp.yCoord != add.yCoord - 1))) {
-                        apart = true;
-                    } else if(apart) {
-                        line.clear();
-                        line.add(piece);
-                    }
-                    break;
-                }
-                line.add(add);
-                temp = add;
-            }
-            System.out.println("Negative");
-            for(int i = 1; i < 5; i++) {
-                int checkCol = horizontal ? col - i : col;
-                int checkRow = horizontal ? row : row - i;
-                System.out.println("checkCol: " + checkCol + " checkRow: " + checkRow);
-                System.out.println("Score: " + line.size());
-                if(board.get(checkCol + ", " + checkRow) == null) {
-                    break;
-                }
-                Piece add = board.get(checkCol + ", " + checkRow);
-                if(moves.contains(add)) {
-                    delete = false;
-                    if(!apart && (horizontal ? (temp.xCoord != add.xCoord + 1 || temp.xCoord != add.xCoord - 1)
-                        : (temp.yCoord != add.yCoord + 1 || temp.yCoord != add.yCoord - 1))) {
-                        apart = true;
-                    } else if(apart) {
-                        line.clear();
-                        line.add(piece);
-                    }
-                    break;
-                }
-                line.add(add);
-                temp = add;
-            }
-            if(line.size() == 1 && delete) {
-                line.clear();
-            }
-            totalScore += line.size();
-        }
-        return totalScore;
+    public Map<String, Object> redrawCurrentPlayerHand() {
+    Map<String, Object> result = new HashMap<>();
+    
+    try {
+        Player currentPlayer = getCurrentPlayer();
+        
+        currentPlayer.setHand(bag.redrawHand(currentPlayer.getHand()));
+        
+        // Move to next player's turn
+        
+        result.put("success", true);
+        result.put("gameState", getGameState());
+        result.put("message", "Hand redrawn successfully");
+        passTurn();
+        
+    } catch (Exception e) {
+        result.put("success", false);
+        result.put("error", e.getMessage());
     }
+    
+    return result;
+}
+
 }

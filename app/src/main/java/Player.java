@@ -15,6 +15,10 @@ public class Player {
     public void place(Piece piece) {
         hand.remove(piece);
     }
+
+    public void setHand(List<Piece> pieces) {
+        this.hand = new ArrayList<>(pieces);
+    }
     
     public void addScore(int score) {
         this.score += score;
