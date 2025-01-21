@@ -19,7 +19,8 @@ public class GameServer {
             // Print working directory for debugging
             System.out.println("Working Directory = " + System.getProperty("user.dir"));
             
-            HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
+            // Instead of binding to localhost (127.0.0.1)
+            HttpServer server = HttpServer.create(new InetSocketAddress("0.0.0.0", 8080), 0);
             
             // Add CORS headers to allow local development
             server.createContext("/", new FileHandler());
@@ -40,15 +41,31 @@ public class GameServer {
     static class FileHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
-            File file = new File("src/main/html/index.html");
-            exchange.getResponseHeaders().add("Content-Type", "text/html");
-            exchange.sendResponseHeaders(200, file.length());
-            try (OutputStream os = exchange.getResponseBody()) {
-                Files.copy(file.toPath(), os);
+            try {
+                // Load from classpath instead of file system
+                InputStream inputStream = getClass().getResourceAsStream("/html/index.html");
+                if (inputStream == null) {
+                    // Debug logging
+                    System.err.println("Could not find index.html in classpath");
+                    exchange.sendResponseHeaders(404, -1);
+                    return;
+                }
+    
+                byte[] bytes = inputStream.readAllBytes();
+                exchange.getResponseHeaders().add("Content-Type", "text/html");
+                exchange.sendResponseHeaders(200, bytes.length);
+                
+                try (OutputStream os = exchange.getResponseBody()) {
+                    os.write(bytes);
+                }
+            } catch (IOException e) {
+                System.err.println("Error serving index.html: " + e.getMessage());
+                e.printStackTrace();
+                exchange.sendResponseHeaders(500, -1);
             }
         }
     }
-
+    
     static class MoveHandler implements HttpHandler {
         // Remove the board initialization from here
         public MoveHandler() {
